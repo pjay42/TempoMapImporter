@@ -1,89 +1,14 @@
-const { useState, useRef, createContext, useContext } = React;
+const { useState, useRef } = React;
 
 const Midi = window.Midi;
 
-// Dark Mode Context
-const DarkModeContext = createContext();
-
-function DarkModeProvider({ children }) {
-  const [isDark, setIsDark] = useState(true); // Default to dark mode
-
-  return React.createElement(
-    DarkModeContext.Provider,
-    { value: { isDark, setIsDark } },
-    children
-  );
-}
-
-function useDarkMode() {
-  const context = useContext(DarkModeContext);
-  if (!context) {
-    throw new Error('useDarkMode must be used within a DarkModeProvider');
-  }
-  return context;
-}
-
-function ThemeToggle() {
-  const { isDark, setIsDark } = useDarkMode();
-
-  return React.createElement('button', {
-    onClick: () => setIsDark(!isDark),
-    className: `px-3 py-1 text-sm rounded border ${
-      isDark 
-        ? 'bg-gray-700 border-gray-600 text-white hover:bg-gray-600' 
-        : 'bg-gray-300 border-gray-400 text-gray-800 hover:bg-gray-400'
-    } transition-colors`
-  }, isDark ? '☀️ Light Mode' : '🌙 Dark Mode');
-}
-
 function MidiToMa3Xml() {
-  const { isDark } = useDarkMode();
   const fileRef = useRef(null);
   const [rows, setRows] = useState([]);
   const [filename, setFilename] = useState("");
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState(null);
   const [totalBeats, setTotalBeats] = useState(0);
-
-  // Dark theme classes
-  const themeClasses = {
-    container: isDark 
-      ? 'bg-gray-900 text-white' 
-      : 'bg-gray-50 text-gray-900',
-    card: isDark 
-      ? 'bg-gray-800 border-gray-700' 
-      : 'bg-white border-gray-200',
-    text: {
-      primary: isDark ? 'text-white' : 'text-gray-900',
-      secondary: isDark ? 'text-gray-300' : 'text-gray-600',
-      muted: isDark ? 'text-gray-400' : 'text-gray-500'
-    },
-    button: {
-      primary: isDark 
-        ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-        : 'bg-blue-500 hover:bg-blue-600 text-white',
-      disabled: isDark 
-        ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
-        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-    },
-    input: isDark 
-      ? 'bg-gray-700 border-gray-600 text-white' 
-      : 'bg-white border-gray-300 text-gray-900',
-    table: {
-      container: isDark 
-        ? 'bg-gray-800 border-gray-700' 
-        : 'bg-white border-gray-200',
-      header: isDark 
-        ? 'bg-gray-700 text-gray-200' 
-        : 'bg-gray-100 text-gray-700',
-      row: isDark 
-        ? 'border-gray-700 hover:bg-gray-750' 
-        : 'border-gray-200 hover:bg-gray-50',
-      cell: isDark 
-        ? 'text-gray-300' 
-        : 'text-gray-600'
-    }
-  };
 
   function readAsArrayBuffer(file) {
     return new Promise((res, rej) => {
@@ -194,6 +119,7 @@ function MidiToMa3Xml() {
   function buildLua(beats, baseFilename) {
     const safeName = baseFilename.replace(/"/g, '\\"');
     
+    // Use \r\n for all line endings in the Lua script
     const firstLine = `local filename = "${safeName}"\r\n\r\n`;
     const comment = `--beatTable is beat in seconds, 1 or 0 if the beat is a down beat or not, and the tempo if the tempo has changed on that beat, otherwise zero\r\n`;
     const start = `local beatTable = {\r\n`;
@@ -215,6 +141,7 @@ function MidiToMa3Xml() {
     return fullLua;
   }
 
+
   function base64EncodeUnicode(str) {
     str = str.replace(/\r?\n/g, "\r\n");
 
@@ -229,6 +156,7 @@ function MidiToMa3Xml() {
   }
 
   function splitLuaIntoBase64Blocks(luaString, chunkSize = 1024) {
+    // Ensure consistent CRLF endings first
     luaString = luaString.replace(/\r?\n/g, "\r\n");
 
     const blocks = [];
@@ -261,6 +189,7 @@ function MidiToMa3Xml() {
     </GMA3>`;
   }
 
+  // --- FIXED: lightweight line ending checker (was missing after trimming) ---
   function checkLuaLineEndings(luaString) {
     const crlfCount = (luaString.match(/\r\n/g) || []).length;
     const lfCount = (luaString.match(/\n/g) || []).length - crlfCount;
@@ -269,6 +198,7 @@ function MidiToMa3Xml() {
     return crlfCount > 0;
   }
 
+  // --- FIXED: handleParse was missing and is required by UI ---
   async function handleParse() {
     setError(null);
     const file = fileRef.current?.files?.[0];
@@ -320,6 +250,7 @@ function MidiToMa3Xml() {
       const b64 = base64EncodeUnicode(lua);
       console.log("Base64 encoded, length:", b64.length);
       
+      // Check line endings before encoding (non-blocking)
       checkLuaLineEndings(lua);
       
       const blocks = splitLuaIntoBase64Blocks(lua, 1024);
@@ -347,111 +278,52 @@ function MidiToMa3Xml() {
     }
   }
 
-  return React.createElement('div', { 
-    className: `max-w-4xl mx-auto p-6 min-h-screen transition-colors duration-200 ${themeClasses.container}` 
-  },
-    // Header with theme toggle
-    React.createElement('div', { className: 'flex justify-between items-center mb-6' },
-      React.createElement('h2', { 
-        className: `text-xl font-semibold ${themeClasses.text.primary}` 
-      }, 'Tempo Map MID File → MA3 Beat Grid Plugin Creator'),
-      React.createElement(ThemeToggle)
-    ),
-
-    // File input section
-    React.createElement('div', { 
-      className: `flex gap-3 items-center mb-4 p-4 rounded-lg border ${themeClasses.card}` 
-    },
-      React.createElement('input', { 
-        ref: fileRef, 
-        type: 'file', 
-        accept: '.mid,.midi',
-        className: `px-3 py-2 rounded border transition-colors ${themeClasses.input}` 
-      }),
-      React.createElement('button', { 
-        onClick: handleParse, 
-        disabled: parsing,
-        className: `px-4 py-2 rounded transition-colors ${
-          parsing ? themeClasses.button.disabled : themeClasses.button.primary
-        }` 
-      }, parsing ? "Parsing..." : "Parse MIDI"),
-      React.createElement('button', { 
-        onClick: downloadXml, 
-        disabled: !rows.length,
-        className: `px-4 py-2 rounded transition-colors ${
-          !rows.length ? themeClasses.button.disabled : themeClasses.button.primary
-        }` 
-      }, 'Download XML')
+  return React.createElement('div', { className: 'max-w-4xl mx-auto p-6' },
+    React.createElement('h2', { className: 'text-xl font-semibold mb-3' }, 'Tempo Map MID File → MA3 Beat Grid Plugin Creator'),
+    React.createElement('div', { className: 'flex gap-3 items-center mb-4' },
+      React.createElement('input', { ref: fileRef, type: 'file', accept: '.mid,.midi' }),
+      React.createElement('button', { onClick: handleParse, disabled: parsing }, parsing ? "Parsing..." : "Parse MIDI"),
+      React.createElement('button', { onClick: downloadXml, disabled: !rows.length }, 'Download XML')
     ),
     
-    // Error message
-    error && React.createElement('div', { 
-      className: `mb-3 p-3 rounded bg-red-900 border border-red-700 text-red-200` 
-    }, error),
+    error && React.createElement('div', { className: 'mb-3 text-red-600' }, error),
     
-    // Success message
-    totalBeats > 0 && React.createElement('div', { 
-      className: `mb-3 p-3 rounded bg-green-900 border border-green-700 text-green-200` 
-    }, `Successfully parsed ${totalBeats} total beats from MIDI file`),
+    totalBeats > 0 && React.createElement('div', { className: 'mb-3 text-green-600' }, 
+      `Successfully parsed ${totalBeats} total beats from MIDI file`
+    ),
     
-    // Table preview
-    React.createElement('div', { 
-      className: `mb-4 p-4 rounded-lg border ${themeClasses.card}` 
-    },
-      React.createElement('div', { 
-        className: `text-sm mb-2 ${themeClasses.text.secondary}` 
-      }, `Preview (first 200 of ${totalBeats} total beats)`),
-      React.createElement('div', { 
-        className: `rounded-lg overflow-hidden border ${themeClasses.table.container}` 
-      },
-        React.createElement('table', { className: 'w-full text-sm' },
-          React.createElement('thead', null,
-            React.createElement('tr', { className: themeClasses.table.header },
-              React.createElement('th', { className: 'p-3 text-left' }, '#'),
-              React.createElement('th', { className: 'p-3 text-left' }, 'Seconds'),
-              React.createElement('th', { className: 'p-3 text-left' }, 'Downbeat?'),
-              React.createElement('th', { className: 'p-3 text-left' }, 'Tempo Change')
-            )
-          ),
-          React.createElement('tbody', null,
-            rows.slice(0, 200).map((r, i) =>
-              React.createElement('tr', { 
-                key: i,
-                className: `border-b ${themeClasses.table.row}` 
-              },
-                React.createElement('td', { 
-                  className: `p-3 ${themeClasses.table.cell}` 
-                }, r.idx),
-                React.createElement('td', { 
-                  className: `p-3 ${themeClasses.table.cell}` 
-                }, r.seconds),
-                React.createElement('td', { 
-                  className: `p-3 ${themeClasses.table.cell}` 
-                }, r.downbeat),
-                React.createElement('td', { 
-                  className: `p-3 ${themeClasses.table.cell}` 
-                }, r.tempoAtTick ?? 0)
-              )
+    React.createElement('div', { className: 'mb-4' },
+      React.createElement('div', { className: 'text-sm text-gray-600 mb-2' }, 
+        `Preview (first 200 of ${totalBeats} total beats)`
+      ),
+      React.createElement('table', { className: 'w-full text-sm' },
+        React.createElement('thead', null,
+          React.createElement('tr', null,
+            React.createElement('th', null, '#'),
+            React.createElement('th', null, 'Seconds'),
+            React.createElement('th', null, 'Downbeat?'),
+            React.createElement('th', null, 'Tempo Change')
+          )
+        ),
+        React.createElement('tbody', null,
+          rows.slice(0, 200).map((r, i) =>
+            React.createElement('tr', { key: i },
+              React.createElement('td', null, r.idx),
+              React.createElement('td', null, r.seconds),
+              React.createElement('td', null, r.downbeat),
+              React.createElement('td', null, r.tempoAtTick ?? 0)
             )
           )
         )
       ),
-      totalBeats > 200 && React.createElement('div', { 
-        className: `text-xs mt-2 ${themeClasses.text.muted}` 
-      }, `... and ${totalBeats - 200} more beats (all will be included in the download)`)
+      totalBeats > 200 && React.createElement('div', { className: 'text-xs text-gray-500 mt-2' }, 
+        `... and ${totalBeats - 200} more beats (all will be included in the download)`
+      )
     ),
-    
-    // Footer
-    React.createElement('footer', { 
-      className: `text-center text-sm mt-8 ${themeClasses.text.muted}` 
-    }, 'If it breaks, hit me up @pjcarruth')
-  );
-}
+    React.createElement('footer', { className: 'text-center text-gray-500 text-sm mt-8' },
+  'If it breaks, hit me up @pjcarruth'
+)
 
-// App wrapper with dark mode provider
-function App() {
-  return React.createElement(DarkModeProvider, null,
-    React.createElement(MidiToMa3Xml)
   );
 }
 
@@ -459,4 +331,4 @@ if (typeof window.Midi === 'undefined') {
   console.error('Midi library not loaded. Check the external script URL.');
 }
 
-ReactDOM.render(React.createElement(App), document.getElementById('root'));
+ReactDOM.render(React.createElement(MidiToMa3Xml), document.getElementById('root'));
