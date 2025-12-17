@@ -120,21 +120,21 @@ function MidiToMa3Xml() {
     const safeName = baseFilename.replace(/"/g, '\\"');
     
     // Use \r\n for all line endings in the Lua script
-    const firstLine = local filename = "${safeName}"\r\n\r\n;
-    const comment = --beatTable is beat in seconds, 1 or 0 if the beat is a down beat or not, and the tempo if the tempo has changed on that beat, otherwise zero\r\n;
-    const start = local beatTable = {\r\n;
+    const firstLine = `local filename = "${safeName}"\r\n\r\n`;
+    const comment = `--beatTable is beat in seconds, 1 or 0 if the beat is a down beat or not, and the tempo if the tempo has changed on that beat, otherwise zero\r\n`;
+    const start = `local beatTable = {\r\n`;
 
     const entries = [];
     for (let i = 0; i < beats.length; i++) {
       const b = beats[i];
       const secStr = formatSecondsFromMs(b.ms);
       const tempoVal = b.tempoAtTick && b.tempoAtTick !== 0 ? Math.round(b.tempoAtTick) : 0;
-      entries.push(    {${secStr},${b.downbeat},${tempoVal}}${i < beats.length - 1 ? ',' : ''});
+      entries.push(`    {${secStr},${b.downbeat},${tempoVal}}${i < beats.length - 1 ? ',' : ''}`);
     }
 
-    const endTable = \r\n}\r\n\r\n;
+    const endTable = `\r\n}\r\n\r\n`;
 
-    const luaTail = local firstBeatSeconds = beatTable[1][1]\r\nlocal lastBeatSeconds = beatTable[#beatTable][1]\r\n\r\nlocal function CreateBeatAppearances()\r\n    local beatOneAppNum, beatOtherAppNum\r\n    for i = 1, 9999 do\r\n        if not IsObjectValid(GetObject('Appearance '..i)) then\r\n            if not beatOneAppNum then\r\n                Cmd('Store Appearance '..i..' "BeatGridOnes"')\r\n                Cmd('Set Appearance '..i..' "Color" "0.99,0.99,0.99,1"')\r\n                beatOneAppNum = i\r\n            elseif not beatOtherAppNum then\r\n                Cmd('Store Appearance '..i..' "BeatGridOthers"')\r\n                Cmd('Set Appearance '..i..' "Color" "0,0,0,1"')\r\n                break\r\n            end\r\n        end\r\n    end\r\nend\r\n\r\nlocal function DeleteGridRange(songNum,trackGroup)\r\n    local startRaw = firstBeatSeconds * 16777216\r\n    local endRaw = lastBeatSeconds * 16777216\r\n    local deletionIndexList = {}\r\n    local markerList = ObjectList('Timecode '..songNum..'.'..trackGroup..'.0.1 Thru')\r\n    if #markerList == 0 then return end --early exit if no markers \r\n    -- find all markers in between start and end \r\n    for _, marker in ipairs(markerList) do\r\n        if marker.rawstart < endRaw and marker.rawstart >= startRaw then\r\n            table.insert(deletionIndexList, marker.index)\r\n        end\r\n    end\r\n    if #deletionIndexList == 0 then return end --early exit if no markers \r\n    --delete those markers \r\n    Cmd('CD Timecode '..songNum..'.'..trackGroup..'.0')\r\n    Cmd('Delete '..table.concat(deletionIndexList, " + "))\r\n    Cmd('CD Root')\r\nend\r\n\r\n\r\nlocal function CreateBeatGrid(timecodeNum,trackGroup)\r\n    --clear out markers from current timecode track \r\n    DeleteGridRange(timecodeNum,trackGroup)\r\n    local beatOneAppearance = GetObject('Appearance "BeatGridOnes"')\r\n    local beatOtherAppearance = GetObject('Appearance "BeatGridOthers"')\r\n    --check for beat appearances and make them if they don't exist yet \r\n    if not (beatOneAppearance and beatOtherAppearance) then\r\n        CreateBeatAppearances()\r\n    end\r\n    --create markers \r\n    Cmd('CD Timecode '..timecodeNum..'.'..trackGroup..'.0') --Marker layer \r\n    local progressBarHandle = StartProgress('Creating Beat Grid')\r\n    SetProgressRange(progressBarHandle,1,#beatTable)\r\n    local tcTrack = GetObject('Timecode '..timecodeNum..'.'..trackGroup..'.0')\r\n    for i = 1, #beatTable do\r\n        Cmd('Insert') -- creates new marker at bottom of children list \r\n        local allMarkers = tcTrack:Children()\r\n        local newMarker = allMarkers[#allMarkers] -- 16777216 is 2^24. You'll find that most things under the hood of MA are 24-bit raw. \r\n        newMarker.rawstart = beatTable[i][1] * 16777216\r\n        --make the length of the marker half of a quarter note \r\n        if #beatTable == 1 then \r\n            newMarker.duration = 0.25 -- arbitrary safe default\r\n        elseif i == #beatTable then\r\n            newMarker.duration = (beatTable[i][1] - beatTable[i-1][1]) / 2\r\n        else\r\n            newMarker.duration = (beatTable[i+1][1] - beatTable[i][1]) / 2\r\n        end\r\n        newMarker.appearance = beatTable[i][2] == 1 and beatOneAppearance or beatOtherAppearance\r\n        if beatTable[i][3] ~= 0 then\r\n            newMarker.name = beatTable[i][3]\r\n        end\r\n        IncProgress(progressBarHandle,1)\r\n    end\r\n    Cmd('CD Root')\r\n    StopProgress(progressBarHandle)\r\nend\r\n\r\nfunction DeleteAllMarkers(songNum,trackGroup)\r\n    Cmd('CD Timecode '..songNum..'.'..trackGroup..'.0')\r\n    Cmd('Delete 1 Thru')\r\n    Cmd('CD Root')\r\nend\r\n\r\nlocal function UiBeatGrid()\r\n    local selectedTC = SelectedTimecode()\r\n    local selectedIndex = selectedTC and selectedTC.index or 1\r\n    local defaultCommandButtons = {\r\n        {value = 3, name = "Cancel"},\r\n        {value = 2, name = "OK"},\r\n        {value = 1, name = "Clear Grid"}\r\n    }\r\n    local inputFields = {\r\n        {order = 1, name = "Timecode Number?", value = selectedIndex, whiteFilter = "0123456789", vkPlugin = "NumericInput"},\r\n        {order = 2, name = "Track Group?", value = "1", whiteFilter = "0123456789", vkPlugin = "NumericInput"}\r\n    }\r\n    local messageTable = {\r\n        icon = "object_smart",\r\n        backColor = "Window.Plugins",\r\n        title = "Tempo Map Importer",\r\n        message = "This will apply the tempo map from file: " .. filename .. "\\r\\nAppearances will be found as 'BeatGridOnes' and 'BeatGridOthers'",\r\n        commands = defaultCommandButtons,\r\n        inputs = inputFields\r\n    }\r\n    local returnTable = MessageBox(messageTable)\r\n    local inputLocation = tonumber(returnTable.inputs["Timecode Number?"])\r\n    local inputTrackGroup = tonumber(returnTable.inputs["Track Group?"]) or 1\r\n    if returnTable.result == 3 then\r\n        --Canceled\r\n        return -- Canceled\r\n    end\r\n    if returnTable.result == 2 then\r\n        if not IsObjectValid(GetObject('Timecode '..inputLocation..'.'..inputTrackGroup)) then\r\n            return Confirm("Timecode or Track Group Doesn't Exist","Canceling",nil,false) \r\n        end\r\n        return CreateBeatGrid(inputLocation,inputTrackGroup)\r\n    end\r\n    if returnTable.result == 1 then\r\n        if Confirm("Confirm Deletion", "Delete all markers in this track?", nil, true) then\r\n            return DeleteAllMarkers(inputLocation,inputTrackGroup)\r\n        else return\r\n        end\r\n    end\r\nend\r\n\r\n-- Define what happens when a user presses on the Lua Plugin within MA3 \r\nreturn UiBeatGrid\r\n;
+    const luaTail = `local firstBeatSeconds = beatTable[1][1]\r\nlocal lastBeatSeconds = beatTable[#beatTable][1]\r\n\r\nlocal function CreateBeatAppearances()\r\n    local beatOneAppNum, beatOtherAppNum\r\n    for i = 1, 9999 do\r\n        if not IsObjectValid(GetObject('Appearance '..i)) then\r\n            if not beatOneAppNum then\r\n                Cmd('Store Appearance '..i..' "BeatGridOnes"')\r\n                Cmd('Set Appearance '..i..' "Color" "0.99,0.99,0.99,1"')\r\n                beatOneAppNum = i\r\n            elseif not beatOtherAppNum then\r\n                Cmd('Store Appearance '..i..' "BeatGridOthers"')\r\n                Cmd('Set Appearance '..i..' "Color" "0,0,0,1"')\r\n                break\r\n            end\r\n        end\r\n    end\r\nend\r\n\r\nlocal function DeleteGridRange(songNum,trackGroup)\r\n    local startRaw = firstBeatSeconds * 16777216\r\n    local endRaw = lastBeatSeconds * 16777216\r\n    local deletionIndexList = {}\r\n    local markerList = ObjectList('Timecode '..songNum..'.'..trackGroup..'.0.1 Thru')\r\n    if #markerList == 0 then return end --early exit if no markers \r\n    -- find all markers in between start and end \r\n    for _, marker in ipairs(markerList) do\r\n        if marker.rawstart < endRaw and marker.rawstart >= startRaw then\r\n            table.insert(deletionIndexList, marker.index)\r\n        end\r\n    end\r\n    if #deletionIndexList == 0 then return end --early exit if no markers \r\n    --delete those markers \r\n    Cmd('CD Timecode '..songNum..'.'..trackGroup..'.0')\r\n    Cmd('Delete '..table.concat(deletionIndexList, " + "))\r\n    Cmd('CD Root')\r\nend\r\n\r\n\r\nlocal function CreateBeatGrid(timecodeNum,trackGroup)\r\n    --clear out markers from current timecode track \r\n    DeleteGridRange(timecodeNum,trackGroup)\r\n    local beatOneAppearance = GetObject('Appearance "BeatGridOnes"')\r\n    local beatOtherAppearance = GetObject('Appearance "BeatGridOthers"')\r\n    --check for beat appearances and make them if they don't exist yet \r\n    if not (beatOneAppearance and beatOtherAppearance) then\r\n        CreateBeatAppearances()\r\n    end\r\n    --create markers \r\n    Cmd('CD Timecode '..timecodeNum..'.'..trackGroup..'.0') --Marker layer \r\n    local progressBarHandle = StartProgress('Creating Beat Grid')\r\n    SetProgressRange(progressBarHandle,1,#beatTable)\r\n    local tcTrack = GetObject('Timecode '..timecodeNum..'.'..trackGroup..'.0')\r\n    for i = 1, #beatTable do\r\n        Cmd('Insert') -- creates new marker at bottom of children list \r\n        local allMarkers = tcTrack:Children()\r\n        local newMarker = allMarkers[#allMarkers] -- 16777216 is 2^24. You'll find that most things under the hood of MA are 24-bit raw. \r\n        newMarker.rawstart = beatTable[i][1] * 16777216\r\n        --make the length of the marker half of a quarter note \r\n        if #beatTable == 1 then \r\n            newMarker.duration = 0.25 -- arbitrary safe default\r\n        elseif i == #beatTable then\r\n            newMarker.duration = (beatTable[i][1] - beatTable[i-1][1]) / 2\r\n        else\r\n            newMarker.duration = (beatTable[i+1][1] - beatTable[i][1]) / 2\r\n        end\r\n        newMarker.appearance = beatTable[i][2] == 1 and beatOneAppearance or beatOtherAppearance\r\n        if beatTable[i][3] ~= 0 then\r\n            newMarker.name = beatTable[i][3]\r\n        end\r\n        IncProgress(progressBarHandle,1)\r\n    end\r\n    Cmd('CD Root')\r\n    StopProgress(progressBarHandle)\r\nend\r\n\r\nfunction DeleteAllMarkers(songNum,trackGroup)\r\n    Cmd('CD Timecode '..songNum..'.'..trackGroup..'.0')\r\n    Cmd('Delete 1 Thru')\r\n    Cmd('CD Root')\r\nend\r\n\r\nlocal function UiBeatGrid()\r\n    local selectedTC = SelectedTimecode()\r\n    local selectedIndex = selectedTC and selectedTC.index or 1\r\n    local defaultCommandButtons = {\r\n        {value = 3, name = "Cancel"},\r\n        {value = 2, name = "OK"},\r\n        {value = 1, name = "Clear Grid"}\r\n    }\r\n    local inputFields = {\r\n        {order = 1, name = "Timecode Number?", value = selectedIndex, whiteFilter = "0123456789", vkPlugin = "NumericInput"},\r\n        {order = 2, name = "Track Group?", value = "1", whiteFilter = "0123456789", vkPlugin = "NumericInput"}\r\n    }\r\n    local messageTable = {\r\n        icon = "object_smart",\r\n        backColor = "Window.Plugins",\r\n        title = "Tempo Map Importer",\r\n        message = "This will apply the tempo map from file: " .. filename .. "\\r\\nAppearances will be found as 'BeatGridOnes' and 'BeatGridOthers'",\r\n        commands = defaultCommandButtons,\r\n        inputs = inputFields\r\n    }\r\n    local returnTable = MessageBox(messageTable)\r\n    local inputLocation = tonumber(returnTable.inputs["Timecode Number?"])\r\n    local inputTrackGroup = tonumber(returnTable.inputs["Track Group?"]) or 1\r\n    if returnTable.result == 3 then\r\n        --Canceled\r\n        return -- Canceled\r\n    end\r\n    if returnTable.result == 2 then\r\n        if not IsObjectValid(GetObject('Timecode '..inputLocation..'.'..inputTrackGroup)) then\r\n            return Confirm("Timecode or Track Group Doesn't Exist","Canceling",nil,false) \r\n        end\r\n        return CreateBeatGrid(inputLocation,inputTrackGroup)\r\n    end\r\n    if returnTable.result == 1 then\r\n        if Confirm("Confirm Deletion", "Delete all markers in this track?", nil, true) then\r\n            return DeleteAllMarkers(inputLocation,inputTrackGroup)\r\n        else return\r\n        end\r\n    end\r\nend\r\n\r\n-- Define what happens when a user presses on the Lua Plugin within MA3 \r\nreturn UiBeatGrid\r\n`;
 
     const fullLua = firstLine + comment + start + entries.join('\r\n') + endTable + luaTail;
     
@@ -154,45 +154,47 @@ function MidiToMa3Xml() {
 
     return btoa(binary);
   }
-
-function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
-  const blocks = [];
-  for (let i = 0; i < luaString.length; i += chunkChars) {
-    const chunk = luaString.slice(i, i + chunkChars);
-    
-    const utf8Bytes = new TextEncoder().encode(chunk);
-
-    let binary = "";
-    for (let j = 0; j < utf8Bytes.length; j++) {
-      binary += String.fromCharCode(utf8Bytes[j]);
+  
+  function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
+    const blocks = [];
+    for (let i = 0; i < luaString.length; i += chunkChars) {
+      const chunk = luaString.slice(i, i + chunkChars);
+      
+      // UTF-8 encode
+      const utf8Bytes = new TextEncoder().encode(chunk);
+  
+      // Convert bytes to binary string for btoa
+      let binary = "";
+      for (let j = 0; j < utf8Bytes.length; j++) {
+        binary += String.fromCharCode(utf8Bytes[j]);
+      }
+  
+      blocks.push(btoa(binary)); 
     }
-
-    blocks.push(btoa(binary));
+    return blocks;
   }
-  return blocks;
-}
+
 
   function buildXmlWithLuaBase64(blocks, baseFilename) {
     const totalSize = blocks.reduce((sum, block) => sum + block.length, 0);
     const safeName = (baseFilename || "Untitled") + " Beat Importer";
 
-    let fileContent =             <FileContent Size="${totalSize}">\n;
+    let fileContent = `            <FileContent Size="${totalSize}">\n`;
     blocks.forEach(block => {
-      fileContent +=                 <Block Base64="${block}"/>\n;
+      fileContent += `                <Block Base64="${block}"/>\n`;
     });
     fileContent += '            </FileContent>';
 
-    return <?xml version="1.0" encoding="UTF-8"?>
+    return `<?xml version="1.0" encoding="UTF-8"?>
     <GMA3 DataVersion="2.3.1.1">
         <UserPlugin Name="${safeName}" Guid="E8 D2 CD 55 D4 92 10 02 8F EA DF B5 EA 2C DA 1F" Author="PJ Carruth" Version="0.0.0.0">
             <ComponentLua Guid="E8 D2 CD 55 50 D7 10 02 25 FD 30 BF 10 7D 65 1E">
     ${fileContent}
             </ComponentLua>
         </UserPlugin>
-    </GMA3>;
+    </GMA3>`;
   }
-
-  // --- FIXED: lightweight line ending checker (was missing after trimming) ---
+  
   function checkLuaLineEndings(luaString) {
     const crlfCount = (luaString.match(/\r\n/g) || []).length;
     const lfCount = (luaString.match(/\n/g) || []).length - crlfCount;
@@ -201,7 +203,6 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
     return crlfCount > 0;
   }
 
-  // --- FIXED: handleParse was missing and is required by UI ---
   async function handleParse() {
     setError(null);
     const file = fileRef.current?.files?.[0];
@@ -230,11 +231,11 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
       setRows(allRows);
       setTotalBeats(allRows.length);
       
-      console.log(Parsed ${allRows.length} total beats from MIDI file);
+      console.log(`Parsed ${allRows.length} total beats from MIDI file`);
       
     } catch (err) {
       console.error('Parse error:', err);
-      setError(Error: ${err.message});
+      setError(`Error: ${err.message}`);
     } finally {
       setParsing(false);
     }
@@ -245,7 +246,7 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
     
     try {
       const beats = rows.map(r => ({ ms: r.ms, downbeat: r.downbeat, tempoAtTick: r.tempoAtTick }));
-      console.log(Downloading XML with ${beats.length} total beats);
+      console.log(`Downloading XML with ${beats.length} total beats`);
       
       const lua = buildLua(beats, filename);
       console.log("Generated Lua, length:", lua.length);
@@ -258,7 +259,7 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
       
       const blocks = splitLuaIntoBase64Blocks(lua, 1024);
 
-      console.log(Split into ${blocks.length} blocks);
+      console.log(`Split into ${blocks.length} blocks`);
       
       const xml = buildXmlWithLuaBase64(blocks, filename);
       console.log("XML generated successfully");
@@ -267,7 +268,7 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = ${filename || "tempo-map"} Beat Importer.xml;
+      a.download = `${filename || "tempo-map"} Beat Importer.xml`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -277,7 +278,7 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
       
     } catch (error) {
       console.error("Download error:", error);
-      setError(Download failed: ${error.message}.);
+      setError(`Download failed: ${error.message}.`);
     }
   }
 
@@ -292,12 +293,12 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
     error && React.createElement('div', { className: 'mb-3 text-red-600' }, error),
     
     totalBeats > 0 && React.createElement('div', { className: 'mb-3 text-green-600' }, 
-      Successfully parsed ${totalBeats} total beats from MIDI file
+      `Successfully parsed ${totalBeats} total beats from MIDI file`
     ),
     
     React.createElement('div', { className: 'mb-4' },
       React.createElement('div', { className: 'text-sm text-gray-600 mb-2' }, 
-        Preview (first 200 of ${totalBeats} total beats)
+        `Preview (first 200 of ${totalBeats} total beats)`
       ),
       React.createElement('table', { className: 'w-full text-sm' },
         React.createElement('thead', null,
@@ -320,7 +321,7 @@ function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
         )
       ),
       totalBeats > 200 && React.createElement('div', { className: 'text-xs text-gray-500 mt-2' }, 
-        ... and ${totalBeats - 200} more beats (all will be included in the download)
+        `... and ${totalBeats - 200} more beats (all will be included in the download)`
       )
     ),
     React.createElement('footer', { className: 'text-center text-gray-500 text-sm mt-8' },
