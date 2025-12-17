@@ -282,54 +282,101 @@ function MidiToMa3Xml() {
     }
   }
 
-  return React.createElement('div', { className: 'max-w-4xl mx-auto p-6' },
-    React.createElement('h2', { className: 'text-xl font-semibold mb-3' }, 'Tempo Map MID File → MA3 Beat Grid Plugin Creator'),
-    React.createElement('div', { className: 'flex gap-3 items-center mb-4' },
-      React.createElement('input', { ref: fileRef, type: 'file', accept: '.mid,.midi' }),
-      React.createElement('button', { onClick: handleParse, disabled: parsing }, parsing ? "Parsing..." : "Parse MIDI"),
-      React.createElement('button', { onClick: downloadXml, disabled: !rows.length }, 'Download XML')
+  return React.createElement(
+  'div',
+  { className: 'max-w-4xl mx-auto p-6' },
+
+  React.createElement(
+    'h2',
+    { className: 'text-xl font-semibold mb-3' },
+    'Tempo Map MID File → MA3 Beat Grid Plugin Creator'
+  ),
+
+  React.createElement(
+    'div',
+    { className: 'flex gap-3 items-center mb-4' },
+    React.createElement('input', {
+      ref: fileRef,
+      type: 'file',
+      accept: '.mid,.midi'
+    }),
+    React.createElement(
+      'button',
+      { onClick: handleParse, disabled: parsing },
+      parsing ? 'Parsing…' : 'Parse MIDI'
     ),
-    
-    error && React.createElement('div', { className: 'mb-3 text-red-600' }, error),
-    
-    totalBeats > 0 && React.createElement('div', { className: 'mb-3 text-green-600' }, 
+    React.createElement(
+      'button',
+      { onClick: downloadXml, disabled: !rows.length },
+      'Download XML'
+    )
+  ),
+
+  error &&
+    React.createElement(
+      'div',
+      { className: 'mb-3 text-red-600' },
+      error
+    ),
+
+  totalBeats > 0 &&
+    React.createElement(
+      'div',
+      { className: 'mb-3 text-green-600' },
       `Successfully parsed ${totalBeats} total beats from MIDI file`
     ),
-    
-    React.createElement('div', { className: 'mb-4' },
-      React.createElement('div', { className: 'text-sm text-gray-600 mb-2' }, 
+
+  rows.length > 0 &&
+    React.createElement(
+      'div',
+      { className: 'mb-4' },
+
+      React.createElement(
+        'div',
+        { className: 'text-sm text-gray-600 mb-2' },
         `Preview (first 200 of ${totalBeats} total beats)`
       ),
-      React.createElement('table', { className: 'w-full text-sm' },
-        React.createElement('thead', null,
-          React.createElement('tr', null,
+
+      React.createElement(
+        'table',
+        { className: 'w-full text-sm' },
+        React.createElement(
+          'thead',
+          null,
+          React.createElement(
+            'tr',
+            null,
             React.createElement('th', null, '#'),
             React.createElement('th', null, 'Seconds'),
             React.createElement('th', null, 'Downbeat?'),
             React.createElement('th', null, 'Tempo Change')
           )
         ),
-        React.createElement('tbody', null,
+        React.createElement(
+          'tbody',
+          null,
           rows.slice(0, 200).map((r, i) =>
-            React.createElement('tr', { key: i },
+            React.createElement(
+              'tr',
+              { key: i },
               React.createElement('td', null, r.idx),
               React.createElement('td', null, r.seconds),
               React.createElement('td', null, r.downbeat),
-              React.createElement('td', null, r.tempoAtTick ?? 0)
+              React.createElement('td', null, r.tempoAtTick)
             )
           )
         )
       ),
-      totalBeats > 200 && React.createElement('div', { className: 'text-xs text-gray-500 mt-2' }, 
-        `... and ${totalBeats - 200} more beats (all will be included in the download)`
-      )
-    ),
-    React.createElement('footer', { className: 'text-center text-gray-500 text-sm mt-8' },
-  'If it breaks, hit me up @pjcarruth'
-)
 
-  );
-}
+      totalBeats > 200 &&
+        React.createElement(
+          'div',
+          { className: 'text-xs text-gray-500 mt-2' },
+          `… and ${totalBeats - 200} more beats (all will be included in the download)`
+        )
+    )
+);
+
 
 if (typeof window.Midi === 'undefined') {
   console.error('Midi library not loaded. Check the external script URL.');
