@@ -135,22 +135,24 @@ function MidiToMa3Xml() {
     return firstLine + comment + start + entries.join('\r\n') + endTable + luaTail;
   }
 
-  // Optimized MA3-safe Base64 chunking
   function splitLuaIntoBase64Blocks(luaString, chunkChars = 1024) {
     const blocks = [];
     for (let i = 0; i < luaString.length; i += chunkChars) {
       const chunk = luaString.slice(i, i + chunkChars);
-      // Base64 encode Unicode properly
+      
+      // UTF-8 encode
       const utf8Bytes = new TextEncoder().encode(chunk);
+  
+      // Convert bytes to binary string for btoa
       let binary = "";
       for (let j = 0; j < utf8Bytes.length; j++) {
         binary += String.fromCharCode(utf8Bytes[j]);
       }
-      blocks.push(btoa(binary));
+  
+      blocks.push(btoa(binary)); // natural "==" padding will appear for 1024-char blocks
     }
     return blocks;
   }
-
 
   function buildXmlWithLuaBase64(blocks, baseFilename) {
     const totalSize = blocks.reduce((sum, block) => sum + block.length, 0);
