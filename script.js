@@ -189,7 +189,6 @@ function MidiToMa3Xml() {
     </GMA3>`;
   }
 
-  // --- FIXED: lightweight line ending checker (was missing after trimming) ---
   function checkLuaLineEndings(luaString) {
     const crlfCount = (luaString.match(/\r\n/g) || []).length;
     const lfCount = (luaString.match(/\n/g) || []).length - crlfCount;
@@ -198,7 +197,6 @@ function MidiToMa3Xml() {
     return crlfCount > 0;
   }
 
-  // --- FIXED: handleParse was missing and is required by UI ---
   async function handleParse() {
     setError(null);
     const file = fileRef.current?.files?.[0];
@@ -250,10 +248,9 @@ function MidiToMa3Xml() {
       const b64 = base64EncodeUnicode(lua);
       console.log("Base64 encoded, length:", b64.length);
       
-      // Check line endings before encoding (non-blocking)
       checkLuaLineEndings(lua);
       
-      const blocks = splitLuaIntoBase64Blocks(lua, 1024);
+      const blocks = base64EncodeUnicode(lua).match(/.{1,1024}/g) || [];
 
       console.log(`Split into ${blocks.length} blocks`);
       
