@@ -376,7 +376,7 @@ function MidiToMa3Xml() {
         )
     )
 );
-
+}
 
 if (typeof window.Midi === 'undefined') {
   console.error('Midi library not loaded. Check the external script URL.');
